@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Q50 Digital Twin synthetic telemetry sample",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "session_id", "source", "elapsed_s", "timestamp_utc", "engine_rpm", "vehicle_speed_kph", "coolant_temp_c", "intake_temp_c", "throttle_pct", "quality"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "session_id": {"type": "string", "minLength": 1},
+    "source": {"enum": ["simulation", "bench", "recording", "live"]},
+    "elapsed_s": {"type": "number", "minimum": 0},
+    "timestamp_utc": {"type": "string", "format": "date-time"},
+    "engine_rpm": {"type": "number", "minimum": 0, "maximum": 10000},
+    "vehicle_speed_kph": {"type": "number", "minimum": 0, "maximum": 400},
+    "coolant_temp_c": {"type": "number", "minimum": -40, "maximum": 200},
+    "intake_temp_c": {"type": "number", "minimum": -40, "maximum": 150},
+    "throttle_pct": {"type": "number", "minimum": 0, "maximum": 100},
+    "quality": {"enum": ["valid", "stale", "invalid"]}
+  }
+}
