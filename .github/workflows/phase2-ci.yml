@@ -1,0 +1,25 @@
+name: Phase 1 and 2 tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile C++17 CAN decoder
+        run: |
+          mkdir -p decoder/bin
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic decoder/src/main.cpp -o decoder/bin/q50-can-decoder.exe
+      - name: Run simulator, encoder and C++ integration tests
+        run: python -m unittest discover -s tests -v
+      - name: Smoke test full pipeline
+        run: |
+          python -m simulator.cli --scenario mixed --duration 10 --hz 10 --output data/sample/ci_10s.jsonl
+          python -m canbus.cli --input data/sample/ci_10s.jsonl --output data/can/ci_10s.canlog
+          ./decoder/bin/q50-can-decoder.exe --input data/can/ci_10s.canlog --output data/decoded/ci_10s.jsonl

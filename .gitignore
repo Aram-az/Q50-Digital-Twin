@@ -7,3 +7,8 @@ __pycache__/
 *.log
 # Keep small example datasets, ignore larger local recordings.
 data/recordings/
+# Phase 2 compiled executables, generated temporary files
+/decoder/bin/
+*.tmp
+# Generated runtime output beyond small checked-in examples
+/data/recordings/
