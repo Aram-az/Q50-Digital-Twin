@@ -4,7 +4,7 @@
 
 > **Simulation only:** All existing measurements are synthetic. This program does not attach to, command or tune a vehicle. Synthetic CAN IDs `0x500`/`0x501` are project-defined, not Infiniti OEM IDs. The diagnostic alerts are not validated vehicle diagnoses.
 
-## Features (Phase 4)
+## Features (Phase 5)
 
 | Layer | Implementation | Features |
 | --- | --- | --- |
@@ -12,10 +12,25 @@
 | Automotive protocol | Python encoder, C++17 decoder | 8-byte synthetic CAN frames, validation, sequence counters (Phase 2) |
 | API | FastAPI, WebSockets | Sessions, persistent storage, live broadcasting (Phase 3) |
 | Database | SQLite / PostgreSQL | Recorded sessions, statistics, sample retrieval (Phase 3) |
-| Dashboard | React, TypeScript, Vite | Live gauges, time-series plots, saved sessions and replay (Phase 4) |
+| Dashboard | React, TypeScript, Vite | GT-R MFD-inspired original twin-dial instrument, animated needles, shift lights, four screen presets, telemetry trace, saved sessions and replay (Phase 5) |
 | Diagnostics | TypeScript rules | Demonstration-only overheating and dropout detection (Phase 4) |
 | Live demo | Python coroutine | Start/stop bounded synthetic streams from React (Phase 4) |
 | Validation | unittest + Node test runner | Backend, CAN, simulator and alert rules |
+
+## Phase 5 — Red Sport Instrument Lab
+
+The Phase 4 SaaS-style dashboard has been replaced by an original instrument-cluster interface.
+
+- **Twin analog-style animated SVG gauges:** RPM and road speed; 270-degree needle travel and warm white tach markings.
+- **Sequential shift LEDs and throttle demand stack:** animated from synthetic RPM and throttle signals.
+- **Four selectable MFD presets:** DRIVE (six micro-gauges), THERMAL (coolant trace and warning), TRACE (live oscilloscope), and LOGBOOK (recorded sessions and diagnostic events).
+- **Bench-style controls:** start/stop a simulation, select fault scenarios, playback, time scrub and follow live telemetry.
+- **Offline attract loop:** when the backend is unavailable, the gauges animate a clearly labeled built-in synthetic preview; no vehicle or API connection is implied.
+- **No added frontend libraries or downloaded vehicle artwork.** Entire interface uses custom React/SVG/CSS.
+
+The visual language is inspired by the mechanical gauges and early GT-R multi-function displays, but is original and does not reproduce OEM art, logos, or firmware. Demonstration RPM scale/red-zone highlights are not validated Q50 calibration.
+
+See `docs/phase5.md` for setup and architecture details.
 
 ## Architecture
 

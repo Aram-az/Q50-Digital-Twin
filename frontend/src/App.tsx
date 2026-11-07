@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, websocketUrl } from './lib/api';
 import { analyzeTelemetry } from './lib/diagnostics';
 import { previewSamples } from './lib/preview';
+import { previewPingPongIndex } from './lib/instrumentMath';
 import type { DemoScenario, DrivingSession, TelemetrySample } from './lib/types';
-import { MiniGauge, TelemetryChart, VehicleGraphic } from './components/Visuals';
+import { InstrumentDial, AuxDial, Oscilloscope, RevLights, ThrottleStack } from './components/Instrument';
 
 const preview = previewSamples();
 const scenarioOptions: { value: DemoScenario; title: string }[] = [
@@ -17,6 +18,13 @@ const scenarioOptions: { value: DemoScenario; title: string }[] = [
 
 /** Merge historical fetches and live WebSocket events without duplicate samples. */
 function mergeSamples(a: TelemetrySample[], b: TelemetrySample[]): TelemetrySample[] {
+  // Most WebSocket events contain a single chronological sample; avoid sorting the entire history.
+  if (a.length && b.length === 1) {
+    const next = b[0];
+    const last = a[a.length - 1];
+    if (next.elapsed_s > last.elapsed_s) return [...a, next];
+    if (next.elapsed_s === last.elapsed_s) return [...a.slice(0, -1), next];
+  }
   const map = new Map(a.map(s => [s.elapsed_s, s]));
   b.forEach(s => map.set(s.elapsed_s, s));
   return [...map.values()].sort((x, y) => x.elapsed_s - y.elapsed_s);
@@ -52,6 +60,8 @@ export default function App() {
   const [speed, setSpeed] = useState(1);
   const [cursor, setCursor] = useState(0);
   const [playbackRun, setPlaybackRun] = useState(0);
+  const [previewFrame, setPreviewFrame] = useState(0);
+  const [preset, setPreset] = useState<1 | 2 | 3 | 4>(1);
 
   const refreshSessions = useCallback(async () => {
     const list = await api.sessions();
@@ -77,7 +87,7 @@ export default function App() {
 
   // On selection, load existing history and subscribe to new committed telemetry.
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || !online) return;
     let active = true;
     let retry: number | undefined;
     let ws: WebSocket | undefined;
@@ -124,7 +134,16 @@ export default function App() {
     void reloadHistory();
     connect();
     return () => { active = false; if (retry) clearTimeout(retry); ws?.close(); };
-  }, [selectedId, refreshSessions]);
+  }, [selectedId, refreshSessions, online]);
+
+  // Instrument-attract mode: cycle a clearly marked synthetic trace even with no API.
+  useEffect(() => {
+    if (online && selectedId && samples.length > 0) return;
+    // The 18s trace reverses smoothly at its boundaries instead of jumping to frame 0.
+    const cycle = 2 * (preview.length - 1);
+    const interval = window.setInterval(() => setPreviewFrame(f => (f + 1) % cycle), 100);
+    return () => window.clearInterval(interval);
+  }, [online, selectedId, samples.length > 0]);
 
   // Replay is based on simulation timestamps, not the number of samples. This
   // preserves pauses and missing-data gaps when viewing dropout scenarios.
@@ -185,87 +204,145 @@ export default function App() {
 
   function pauseReplay() { setPlaying(false); }
 
-  const offline = !selectedId;
+  // While API history is loading or a new run has no data yet, show clearly labelled preview data.
+  const offline = !online || !selectedId || samples.length === 0;
   const displaySamples = offline ? preview : samples;
-  const shownIndex = followLive ? displaySamples.length - 1 : Math.min(cursor, displaySamples.length - 1);
+  const shownIndex = offline ? previewPingPongIndex(previewFrame, preview.length) : followLive ? displaySamples.length - 1 : Math.min(cursor, displaySamples.length - 1);
   const sample = shownIndex >= 0 ? displaySamples[shownIndex] : null;
-  const plotted = displaySamples.slice(0, shownIndex + 1);
+  const plotted = useMemo(() => displaySamples.slice(0, shownIndex + 1), [displaySamples, shownIndex]);
   const events = useMemo(() => analyzeTelemetry(plotted), [plotted]);
   const selectedSession = sessions.find(s => s.session_id === selectedId);
   const hottest = sample ? sample.coolant_temp_c >= 105 : false;
   const isRunning = demoStatus === 'running' || demoStatus === 'stopping';
   const latestTime = displaySamples.at(-1)?.elapsed_s ?? 0;
   const currentTime = sample?.elapsed_s ?? 0;
-  const maxSpeed = displaySamples.reduce((m, s) => Math.max(m, s.vehicle_speed_kph), 0);
-  const maxRpm = displaySamples.reduce((m, s) => Math.max(m, s.engine_rpm), 0);
+  // Peak indicators only include measurements up to the replay cursor, not future samples.
+  const maxSpeed = plotted.reduce((m, s) => Math.max(m, s.vehicle_speed_kph), 0);
+  const maxRpm = plotted.reduce((m, s) => Math.max(m, s.engine_rpm), 0);
 
-  return <div className="app-shell">
-    <aside className="sidebar">
-      <div className="brand"><div className="brand-symbol">Q<span>50</span></div><div className="brand-caption">DIGITAL TWIN <span className="brand-dot">●</span></div></div>
-      <div className="aside-section">WORKSPACE</div>
-      <nav className="nav-links" aria-label="Main navigation">
-        <a className="active" href="#overview"><span>◫</span> Overview</a>
-        <a href="#telemetry"><span>⌁</span> Telemetry</a>
-        <a href="#diagnostics"><span>◇</span> Diagnostics</a>
-        <a href="#sessions"><span>▤</span> Session history</a>
-      </nav>
-      <div className="aside-section sidebar-divider">VEHICLE PROFILE</div>
-      <div className="vehicle-profile"><span className="vehicle-initial">Q</span><div><strong>Infiniti Q50</strong><small>2017 · Red Sport 400</small><small>Stage 2 · Project inspiration</small></div></div>
-      <div className="sidebar-bottom">
-        <span className="status-led" /> LOCAL DEVELOPMENT
-        <p>Simulation-only platform. No ECU commands or live vehicle integration.</p>
-        <span className="sidebar-version">BUILD 0.4.0 / PHASE 4</span>
-      </div>
-    </aside>
+  const active = sample ?? preview[0];
+  const currentSource = offline ? (online && selectedId ? 'PREVIEW / AWAITING DATA' : 'DEMONSTRATION / LOOP') : followLive ? 'SIMULATION / LIVE' : 'RECORDED / PLAYBACK';
+  const maxCoolant = plotted.reduce((m, s) => Math.max(m, s.coolant_temp_c), 0);
+  const alertCount = events.length;
+  const presetNames = ['DRIVE', 'THERMAL', 'TRACE', 'LOGBOOK'] as const;
 
-    <main className="content" id="overview">
-      <header className="topbar">
-        <div className="breadcrumb">PROJECTS <span>/</span> Q50 DIGITAL TWIN <span>/</span> <strong>OVERVIEW</strong></div>
-        <div className="topbar-right"><span className={`connection ${online ? 'good' : 'bad'}`}><i /> API {online ? 'CONNECTED' : 'OFFLINE'}</span><span className="mode-tag">SYNTHETIC DATA ONLY</span></div>
+  return <div className="q50-app">
+    <div className="dash-width">
+      <header className="masthead">
+        <div className="identity">
+          <div className="identity-slash" aria-hidden="true"><span/><span/><span/></div>
+          <div className="identity-logotype"><strong>Q50</strong><span>RED SPORT <b>400</b></span></div>
+          <div className="identity-caption">DIGITAL TWIN <i>//</i> TELEMETRY INSTRUMENT</div>
+        </div>
+        <div className="masthead-right">
+          <span className="machine-id">2017 / VR30DDTT / STAGE 2 INSPIRED</span>
+          <span className={`link-indicator ${online ? 'linked':'unlinked'}`}><i/>{online ? 'BACKEND ONLINE' : 'LOCAL PREVIEW'}</span>
+          <span className="edition-plate">BUILD <b>05</b> <span>/</span> SIM ONLY</span>
+        </div>
       </header>
 
-      <div className="main-area">
-        <section className="page-heading"><div><span className="eyebrow">AUTOMOTIVE ENGINEERING / COMMAND CENTER</span><h1>Vehicle <em>Overview.</em></h1><p>Real-time telemetry, diagnostics and session analysis — from a virtual Q50 powertrain.</p></div><div className="header-meta"><span>PLATFORM STATUS</span><strong>{offline ? 'PREVIEW MODE' : socketConnected ? 'STREAM LINK READY' : 'RECONNECTING'}</strong><small>{selectedSession?.label || 'Offline sample dataset'}</small></div></section>
+      {error && <div className="system-error" role="alert"><strong>SYS/ERROR</strong><span>{error}</span><button type="button" onClick={() => setError('')} aria-label="Dismiss error">×</button></div>}
 
-        {error && <div className="error-banner"><strong>Action required:</strong> {error}<button type="button" onClick={() => setError('')} aria-label="Dismiss error">✕</button></div>}
-        {!online && <div className="info-banner"><strong>Preview only.</strong> The FastAPI server is not reachable. Charts show clearly labeled built-in synthetic sample data. Start your backend on port 8000 to run or load sessions.</div>}
-
-        <section className="command-card" aria-label="Simulation controls">
-          <div className="command-caption"><span className="red-led" /> SIMULATION CONTROLS <small>LOCAL / READ-ONLY</small></div>
-          <div className="command-controls">
-            <label>DRIVING SCENARIO<select aria-label="Driving scenario" value={scenario} onChange={event => setScenario(event.target.value as DemoScenario)}>{scenarioOptions.map(s => <option value={s.value} key={s.value}>{s.title}</option>)}</select></label>
-            <label>DURATION<select aria-label="Duration" value={duration} onChange={event => setDuration(Number(event.target.value))}><option value={15}>15 seconds</option><option value={30}>30 seconds</option><option value={60}>60 seconds</option></select></label>
-            <button type="button" className="primary-button" disabled={!online || busy} onClick={() => void startDemo()}>{busy ? 'STARTING…' : '▶ START NEW SIMULATION'}</button>
-            <button type="button" className="ghost-button" disabled={!isRunning || !selectedId} onClick={() => void stopDemo()}>■ STOP</button>
+      <section className="cluster-housing" aria-label="Animated Q50 engine and road-speed instruments">
+        <div className="case-screw case-screw--tl" aria-hidden="true"/><div className="case-screw case-screw--tr" aria-hidden="true"/>
+        <div className="cluster-engraving"><span>INSTRUMENT CLUSTER <b>/</b> 001</span><span className="engraving-center">Q50 DIGITAL TWIN <b>•</b> VIRTUAL VEHICLE</span><span>UNITS <b>METRIC</b></span></div>
+        <RevLights rpm={active.engine_rpm}/>
+        <div className="big-dials">
+          <InstrumentDial label="ENGINE SPEED" kind="rpm" value={active.engine_rpm} max={7000} step={1000} display={(active.engine_rpm/1000).toFixed(2)} units="×1000 RPM" detail="SYNTHETIC POWERTRAIN" />
+          <div className="cluster-center">
+            <div className="center-hatch"><span>Q</span><strong>50</strong><small>R/S 400</small></div>
+            <div className="center-data">
+              <div className="center-data-caption">VEHICLE MODE</div>
+              <div className="center-data-main">{isRunning ? 'SIM RUN' : offline ? 'DEMO' : playing ? 'REPLAY' : 'STANDBY'}</div>
+              <div className="center-data-sub">{formatClock(currentTime)} <span>/</span> {formatClock(latestTime)}</div>
+            </div>
+            <ThrottleStack value={active.throttle_pct}/>
+            <div className="center-status"><span className={online ? 'light-ok' : 'light-demo'}/> {offline ? (online && selectedId ? 'AWAITING LIVE SAMPLES' : 'LOCAL GENERATED DATA') : socketConnected ? 'TELEMETRY LINK ACTIVE' : 'LINK CONNECTING'}</div>
           </div>
-          <div className="command-foot"><span className="pulse-led" /> {isRunning ? 'SIMULATOR RUNNING' : demoStatus ? `SIMULATOR ${demoStatus.toUpperCase()}` : 'READY FOR VIRTUAL DRIVING'} <span className="command-foot-right">10 Hz sample rate · Independent Python model</span></div>
-        </section>
+          <InstrumentDial label="GROUND SPEED" kind="speed" value={active.vehicle_speed_kph} max={240} step={40} display={active.vehicle_speed_kph.toFixed(0)} units="km/h" detail="CALIBRATED UI SCALE / DEMO" />
+        </div>
+        <div className="cluster-ledge">
+          <div>DATA <b>{currentSource}</b></div>
+          <div><span className="little-led"/> SYNTHETIC INPUT · NO ECU ACCESS</div>
+          <div>DISPLAY RATE <b>10 Hz SIMULATION</b></div>
+        </div>
+        <div className="case-screw case-screw--bl" aria-hidden="true"/><div className="case-screw case-screw--br" aria-hidden="true"/>
+      </section>
 
-        <section className="metric-grid" aria-label="Current telemetry">
-          <div className="metric-card"><div className="metric-label">VEHICLE SPEED <span>↗</span></div><div className="metric-big">{sample ? sample.vehicle_speed_kph.toFixed(0) : '—'}<span>km/h</span></div><div className="metric-foot"><span className="metric-cyan">●</span> VIRTUAL SPEED SIGNAL</div></div>
-          <div className="metric-card"><div className="metric-label">ENGINE SPEED <span>⌁</span></div><div className="metric-big">{sample ? Math.round(sample.engine_rpm).toLocaleString() : '—'}<span>RPM</span></div><div className="metric-foot"><span className="metric-amber">●</span> SIMULATED POWERTRAIN</div></div>
-          <div className="metric-card"><div className="metric-label">COOLANT TEMP <span>◉</span></div><div className={`metric-big ${hottest ? 'hot-value' : ''}`}>{sample ? sample.coolant_temp_c.toFixed(1) : '—'}<span>°C</span></div><div className="metric-foot">{hottest ? <span className="metric-red">▲ THRESHOLD EXCEEDED</span> : <span className="metric-green">● BELOW DEMO THRESHOLD</span>}</div></div>
-          <div className="metric-card"><div className="metric-label">INTAKE AIR TEMP <span>◌</span></div><div className="metric-big">{sample ? sample.intake_temp_c.toFixed(1) : '—'}<span>°C</span></div><div className="metric-foot">SYNTHETIC INTAKE READING</div></div>
-        </section>
+      <div className="deck-section-title"><span className="index-label">/ 02</span><span>MULTI-FUNCTION DISPLAY</span><i/> <span className="deck-note">SELECT A PRESET</span></div>
+      <section className="mfd-housing" aria-label="Multi-function telemetry display">
+        <header className="mfd-toolbar">
+          <div className="mfd-title"><strong>MFD</strong><span>LIVE DATA / ENGINEERING EDITION</span></div>
+          <nav className="preset-selector" aria-label="Display preset">
+            {presetNames.map((name,index) => <button type="button" key={name} className={preset===index+1 ? 'preset-button active':''}
+              onClick={()=>setPreset((index+1) as 1|2|3|4)} aria-pressed={preset===index+1}>
+              <span>{String(index+1).padStart(2,'0')}</span>{name}
+            </button>)}
+          </nav>
+          <div className="mfd-head-status"><i className={isRunning ? 'blink':''}/> {isRunning ? 'REC' : offline ? 'PREVIEW' : 'MONITOR'}</div>
+        </header>
+        <div className="mfd-content" key={preset}>
+          {preset===1 && <div className="aux-grid">
+            <AuxDial label="COOLANT" min={40} max={130} value={active.coolant_temp_c} unit="°C" warning={hottest} description="DEMO WARNING / 105°C" />
+            <AuxDial label="INTAKE AIR" min={0} max={100} value={active.intake_temp_c} unit="°C" description="SIMULATED INLET TEMP" />
+            <AuxDial label="THROTTLE" min={0} max={100} value={active.throttle_pct} unit="%" description="DEMAND SIGNAL" />
+            <AuxDial label="PEAK RPM" min={0} max={7000} value={maxRpm} unit="RPM" description="FULL SESSION PEAK" />
+            <AuxDial label="MAX SPEED" min={0} max={240} value={maxSpeed} unit="km/h" description="FULL SESSION PEAK" />
+            <AuxDial label="PEAK COOLANT" min={40} max={130} value={maxCoolant} unit="°C" warning={maxCoolant>=105} description="FULL SESSION PEAK" />
+          </div>}
+          {preset===2 && <div className="thermal-preset">
+            <div className="trace-column"><Oscilloscope samples={plotted} field="coolant_temp_c" label="COOLANT TEMPERATURE" unit="°C" color="#efaa69" />
+              <div className="thermal-under"><span>105°C <b>WARNING</b></span><span>115°C <b>CRITICAL</b></span><span>DEMO ONLY</span></div></div>
+            <div className="thermal-sidebar"><AuxDial label="COOLANT" min={40} max={130} value={active.coolant_temp_c} unit="°C" warning={hottest}/>
+              <div className={`thermal-warning ${hottest ? 'thermal-warning--hot':''}`}><i/>{hottest ? 'THERMAL ALERT' : 'THERMAL NOMINAL'}<small>Illustrative thresholds, not Q50 limits</small></div>
+              <div className="thermal-readout"><span>INTAKE</span><b>{active.intake_temp_c.toFixed(1)}°C</b></div></div>
+          </div>}
+          {preset===3 && <div className="trace-preset">
+            <Oscilloscope samples={plotted} field="engine_rpm" label="ENGINE RPM" unit="rpm" color="#e9e8de"/>
+            <Oscilloscope samples={plotted} field="vehicle_speed_kph" label="ROAD SPEED" unit="km/h" color="#e64f42" />
+            <div className="trace-footer"><span>CAPTURE <b>{displaySamples.length} SAMPLES</b></span><span>SOURCE <b>{offline?'LOCAL PREVIEW':'BACKEND RECORD'}</b></span><span>CURSOR <b>{formatClock(currentTime)}</b></span></div>
+          </div>}
+          {preset===4 && <div className="log-preset">
+            <div className="log-column"><div className="log-title"><span>01 / SESSION ARCHIVE</span><button type="button" onClick={() => void refreshSessions().catch(e => setError(String(e)))} disabled={!online}>REFRESH ↻</button></div>
+              {sessions.length===0 ? <p className="log-empty">NO SAVED DRIVES. START A SYNTHETIC SESSION BELOW TO RECORD A LOG.</p> : <div className="log-scroll">
+                {sessions.slice(0,25).map(session=><button type="button" key={session.session_id} className={`log-entry ${selectedId===session.session_id?'selected':''}`} onClick={()=>chooseSession(session.session_id)}>
+                  <span className="log-entry-icon">▣</span><span className="log-entry-label"><strong>{session.label}</strong><small>{session.session_id}</small></span><span className="log-entry-count">{session.sample_count}<small>PTS</small></span>
+                </button>)}
+              </div>}</div>
+            <div className="log-column"><div className="log-title"><span>02 / DIAGNOSTIC BUFFER</span><strong className={alertCount ? 'alert-number hot':''}>{alertCount.toString().padStart(2,'0')}</strong></div>
+              {events.length===0 ? <p className="log-empty">NO THRESHOLD EVENTS IN THE CURRENT VIEW. SELECT AN OVERHEATING OR SENSOR-DROPOUT SCENARIO.</p> : <div className="log-scroll">
+                {events.slice(0,20).map(e=><div className={`log-event ${e.severity}`} key={e.id}><div><b>{e.label}</b><small>{e.description}</small></div><time>{e.elapsed_s.toFixed(1)}s</time></div>)}
+              </div>}</div>
+          </div>}
+        </div>
+        <footer className="mfd-footer"><span>PRESET <b>{String(preset).padStart(2,'0')} / {presetNames[preset-1]}</b></span><span>{offline?'DEMO GENERATOR':'SIMULATED SESSION'} <b>•</b> {displaySamples.length} PTS</span><button type="button" onClick={()=>setPreset(preset===4?1:((preset+1) as 1|2|3|4))}>NEXT DISPLAY ↗</button></footer>
+      </section>
 
-        <section className="primary-grid" id="telemetry">
-          <article className="panel vehicle-panel"><div className="panel-title-row"><div><span className="eyebrow">VEHICLE DIGITAL TWIN</span><h2>2017 Q50 Red Sport</h2></div><span className="subtle-pill">{offline ? 'OFFLINE SAMPLE' : 'VIRTUAL VEHICLE'}</span></div><div className="vehicle-stage"><div className="stage-annotation top-left">VR30DDTT <span>INSPIRATION ONLY</span></div><div className="stage-annotation top-right">POWERTRAIN <span>SYNTHETIC</span></div><VehicleGraphic hot={hottest} /><div className="stage-annotation bottom-left">TELEMETRY SOURCE <span>{offline ? 'BUILT-IN PREVIEW' : 'API / SIMULATION'}</span></div></div><div className="vehicle-panel-bottom"><div><span>DATA QUALITY</span><strong>● {sample ? 'VALID' : 'NO DATA'}</strong></div><div><span>SESSION SAMPLES</span><strong>{displaySamples.length.toLocaleString()}</strong></div><div><span>PLAYHEAD</span><strong>{formatClock(currentTime)}</strong></div></div></article>
-          <article className="panel powertrain-panel"><div className="panel-title-row"><div><span className="eyebrow">ENGINE TELEMETRY</span><h2>Powertrain Status</h2></div><span className="subtle-pill">LIVE VALUES</span></div><div className="gauge-layout"><div><MiniGauge value={sample?.throttle_pct || 0} maximum={100} color="#55d6d5" unit="%" /><span>THROTTLE</span></div><div><MiniGauge value={sample?.engine_rpm || 0} maximum={6500} color="#f1b466" unit="RPM" /><span>RPM SCALE</span></div></div><div className="powertrain-info"><div><span>THROTTLE POSITION</span><strong>{sample?.throttle_pct.toFixed(1) ?? '—'} %</strong></div><div><span>ENGINE RPM PEAK</span><strong>{Math.round(maxRpm).toLocaleString()} rpm</strong></div><div><span>MAX RECORDED SPEED</span><strong>{maxSpeed.toFixed(1)} km/h</strong></div></div><div className="panel-small-note">RPM gauge represents simulated engine speed, not a calibrated engine-load measurement.</div></article>
-        </section>
-
-        <section className="secondary-grid">
-          <article className="panel chart-panel"><div className="panel-title-row"><div><span className="eyebrow">SIGNAL HISTORY</span><h2>Engine & Speed Trace</h2></div><div className="legend"><span><i style={{background:'#56d9d8'}} /> RPM</span><span><i style={{background:'#f4b96e'}} /> SPEED</span></div></div><TelemetryChart samples={plotted} field="engine_rpm" color="#56d9d8" secondaryField="vehicle_speed_kph" secondaryColor="#f4b96e" /><div className="panel-small-note">Each series is independently normalized to show its trend; not a shared numerical axis. Hover for values.</div></article>
-          <article className="panel chart-panel"><div className="panel-title-row"><div><span className="eyebrow">THERMAL MONITORING</span><h2>Coolant Temperature</h2></div><span className="subtle-pill">°C</span></div><TelemetryChart samples={plotted} field="coolant_temp_c" color="#f4b96e" /><div className="thermal-bar"><span>DEMO WARNING LIMIT</span><strong>105 °C</strong></div><div className="panel-small-note">Thresholds are illustrative, not approved for vehicle diagnostics.</div></article>
-        </section>
-
-        <section className="panel playback-panel" id="playback"><div className="panel-title-row"><div><span className="eyebrow">SESSION TRANSPORT</span><h2>Timeline & Replay</h2></div><div className="transport-label">{followLive ? '● FOLLOWING LIVE' : playing ? '▶ REPLAYING' : '|| PAUSED / HISTORY'}</div></div><div className="playback-controls"><button type="button" onClick={() => { setFollowLive(false); setPlaying(false); setCursor(0); }} aria-label="Rewind to beginning">↺</button><button type="button" className="transport-main" disabled={!selectedId || displaySamples.length < 2} onClick={playing ? pauseReplay : beginReplay}>{playing ? 'Ⅱ PAUSE' : '▶ REPLAY'}</button><button type="button" onClick={() => { setFollowLive(true); setPlaying(false); }} disabled={!selectedId} aria-label="Follow latest telemetry">⌁ LIVE</button><span className="timeline-value">{formatClock(currentTime)}</span><input type="range" aria-label="Replay position" min="0" max={Math.max(0, displaySamples.length - 1)} step="1" value={Math.max(0, shownIndex)} disabled={!selectedId || displaySamples.length === 0} onChange={event => { setPlaying(false); setFollowLive(false); setCursor(Number(event.target.value)); }} /><span className="timeline-value">{formatClock(latestTime)}</span><label className="speed-label">SPEED <select value={speed} onChange={e => { setPlaying(false); setSpeed(Number(e.target.value)); }}><option value={.5}>0.5×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option></select></label></div><p className="panel-small-note">Replay uses recorded simulation timestamps, including any missing-data gaps. Selecting an archived session loads stored data from the API.</p></section>
-
-        <section className="lower-grid">
-          <article className="panel" id="diagnostics"><div className="panel-title-row"><div><span className="eyebrow">FAULT MONITORING</span><h2>Diagnostic Events <span className="heading-count">{events.length}</span></h2></div><span className="subtle-pill">DEMO RULES</span></div>{events.length === 0 ? <div className="empty-state"><div className="empty-icon">◇</div><strong>No simulated faults detected</strong><p>Try the Overheating or Sensor Dropout scenario to exercise the diagnostic rules.</p></div> : <div className="events-list">{events.slice(0,6).map(e => <div className="event" key={e.id}><div className={`event-dot ${e.severity}`} /><div><strong>{e.label}</strong><p>{e.description}</p></div><time>{e.elapsed_s.toFixed(1)}s</time></div>)}</div>}<div className="panel-small-note panel-footer-note">This is a rule-based simulator demonstration, not a certified fault reader or mechanical assessment.</div></article>
-          <article className="panel" id="sessions"><div className="panel-title-row"><div><span className="eyebrow">SAVED DRIVE LOGS</span><h2>Session History</h2></div><button className="text-button" type="button" onClick={() => void refreshSessions().catch(err => setError(String(err)))}>↻ REFRESH</button></div><div className="sessions-list">{sessions.length === 0 ? <div className="empty-state"><div className="empty-icon">▤</div><strong>No stored sessions yet</strong><p>Launch a simulation to record telemetry in your database.</p></div> : sessions.slice(0,8).map(session => <button key={session.session_id} type="button" className={`session-row ${session.session_id === selectedId ? 'selected' : ''}`} onClick={() => chooseSession(session.session_id)}><span className="session-icon">▤</span><span className="session-meta"><strong>{session.label}</strong><small>{session.session_id} · {session.sample_count} samples</small></span><span className="session-arrow">↗</span></button>)}</div><div className="panel-small-note panel-footer-note">Only simulated sessions are accepted by the current backend.</div></article>
-        </section>
-        <footer className="footer"><span>Q50 DIGITAL TWIN <b>0.4.0</b> · Engineering portfolio</span><span>NOT CONNECTED TO A VEHICLE · ALL DATA SYNTHETIC</span></footer>
-      </div>
-    </main>
+      <div className="deck-section-title deck-section-title--lower"><span className="index-label">/ 03</span><span>RUN CONTROL / DATA TRANSPORT</span><i/><span className="deck-note">LOCAL DEVELOPMENT ONLY</span></div>
+      <section className="control-rack" aria-label="Simulator and playback controls">
+        <div className="control-block simulator-block">
+          <div className="control-head">DRIVE SIMULATOR <span className="control-subhead">NO CONNECTION TO VEHICLE</span></div>
+          <div className="selector-row">
+            <label>SCENARIO<select aria-label="Driving scenario" value={scenario} onChange={event=>setScenario(event.target.value as DemoScenario)}>{scenarioOptions.map(s=><option key={s.value} value={s.value}>{s.title}</option>)}</select></label>
+            <label>RUN LENGTH<select aria-label="Duration" value={duration} onChange={e=>setDuration(Number(e.target.value))}><option value={15}>15 sec</option><option value={30}>30 sec</option><option value={60}>60 sec</option></select></label>
+          </div>
+          <div className="ignition-controls"><button className="ignition-button" type="button" onClick={()=>void startDemo()} disabled={!online||busy||isRunning}><span className="ignition-ring"><i/></span><span><b>{busy?'INITIALIZING':'START SIMULATION'}</b><small>VIRTUAL IGNITION</small></span></button>
+            <button className="stop-button" type="button" onClick={()=>void stopDemo()} disabled={!isRunning||!selectedId}>■ STOP</button></div>
+          <div className="run-status"><i className={isRunning?'blink':''}/>{!online?'CONNECT FASTAPI TO RUN':isRunning?'SYNTHETIC STREAM ACTIVE':demoStatus?`SIMULATOR / ${demoStatus.toUpperCase()}`:'SIMULATOR ARMED / READY'}</div>
+        </div>
+        <div className="control-block transport-block">
+          <div className="control-head">SESSION TRANSPORT <span className="control-subhead">TIMESTAMP-ACCURATE REPLAY</span></div>
+          <div className="transport-buttons">
+            <button type="button" title="Return to first sample" disabled={!selectedId} onClick={()=>{setFollowLive(false);setPlaying(false);setCursor(0);}}>↺</button>
+            <button type="button" className="play-control" disabled={!selectedId||displaySamples.length<2} onClick={playing?pauseReplay:beginReplay}>{playing?'Ⅱ PAUSE':'▶ REPLAY'}</button>
+            <button type="button" className={followLive?'transport-live active':'transport-live'} disabled={!selectedId} onClick={()=>{setFollowLive(true);setPlaying(false);}}>● LIVE</button>
+            <label>RATE<select aria-label="Replay speed" value={speed} onChange={e=>{setPlaying(false);setSpeed(Number(e.target.value))}}><option value={.5}>0.5×</option><option value={1}>1×</option><option value={2}>2×</option><option value={4}>4×</option></select></label>
+          </div>
+          <div className="tape-deck"><span>{formatClock(currentTime)}</span><input aria-label="Replay position" type="range" min="0" max={Math.max(0,displaySamples.length-1)} value={Math.max(0,shownIndex)} disabled={!selectedId||displaySamples.length===0} onChange={e=>{setPlaying(false);setFollowLive(false);setCursor(Number(e.target.value))}}/><span>{formatClock(latestTime)}</span></div>
+          <div className="tape-note">{selectedSession?.label||'BUILT-IN 18 SECOND PREVIEW'} <span> / {selectedId||'NO SESSION SELECTED'}</span></div>
+        </div>
+      </section>
+      <footer className="page-footer"><span><b>Q50 // DT05</b> — INDEPENDENT TELEMETRY DESIGN STUDY</span><span>R35 PERFORMANCE DISPLAY-INSPIRED · ORIGINAL INTERFACE</span><span className="safety-foot">SIMULATION ONLY. NOT OEM GAUGES OR VALIDATED VEHICLE DIAGNOSTICS.</span></footer>
+    </div>
   </div>;
 }
