@@ -1,0 +1,8 @@
+# Keep your signing credentials and machine-generated artifacts private.
+build/
+signing/
+*.jks
+*.keystore
+__pycache__/
+*.pyc
+local.properties

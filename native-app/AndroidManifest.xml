@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.aram.q50telemetry"
+    android:versionCode="1"
+    android:versionName="0.1">
+    <uses-sdk android:minSdkVersion="10" android:targetSdkVersion="10" />
+    <uses-permission android:name="com.ygomi.permission.IVI_CAN_READ" />
+    <application android:label="Q50 Native Telemetry"
+        android:icon="@drawable/ic_q50" android:allowBackup="false"
+        android:debuggable="false">
+        <!-- Deliberately do not disable the vehicle's distraction restrictions. -->
+        <meta-data android:name="ivi.isDistractive" android:value="true" />
+        <meta-data android:name="ivi.shortcut" android:value="true" />
+        <meta-data android:name="ivi.audio" android:value="false" />
+        <meta-data android:name="ivi.autorun" android:value="false" />
+        <meta-data android:name="ivi.Disclaimer" android:value="true" />
+        <meta-data android:name="ivi.supportDisplay" android:value="ALL" />
+        <meta-data android:name="ivi.defaultDisplay" android:value="LOWER" />
+        <activity android:name=".Q50Activity"
+            android:label="Q50 Native Telemetry"
+            android:screenOrientation="landscape"
+            android:keepScreenOn="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
