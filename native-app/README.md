@@ -1,11 +1,13 @@
 # Q50 Native Telemetry — Phase 6A
 
-**An original, read-only legacy Android 2.3/API-10 instrument prototype** designed
-for *possible* compatibility with App Garage in V37 Infiniti Q50/Q60 head units.
+**An original, read-only legacy Android 2.3/API-10 instrument application** designed
+for App Garage-compatible V37 Infiniti Q50/Q60 head units.
 Not affiliated with Nissan/Infiniti. NOT an ECU controller or a mechanical diagnostic tool.
 
-> STATUS: Java source and EPK packer tested offline. A real Android APK compile and
-> installation on the user's car have **not** yet been performed or verified.
+> **STATUS (owner-reported, November 7, 2026):** The Android application was built,
+> packaged as an EPK, installed, and reported working on a **2017 Infiniti Q50 Red Sport 400**.
+> This is an owner-reported in-car integration milestone, not independent verification
+> of individual sensor mappings, calibration, update frequency or compatibility with other cars.
 
 ## Features
 
@@ -20,7 +22,7 @@ Not affiliated with Nissan/Infiniti. NOT an ECU controller or a mechanical diagn
 
 ## Windows requirements
 
-- JDK 17 or later with `javac` and `keytool` on PATH.
+- **JDK 17 recommended**, with `javac` and `keytool` on PATH. Newer JDKs can trigger a D8 crash with this legacy build toolchain.
 - Android SDK `platforms;android-34` and `build-tools;34.0.0`. Use Android Studio SDK Manager.
 - Windows PowerShell (VS Code integrated terminal is fine).
 - Python 3 and `cryptography` (`.venv` at repository root is auto-detected by build.ps1).
@@ -105,7 +107,7 @@ binary EPK packaging, separate APK signing and EPK encryption.
   binaries of other developers' applications.
 - The bundled public certificate is documented in `keys/README.md`.
 
-## Next milestone (after stationary RPM validation)
+## Next milestone (after independently validating live readings)
 
 Add validated signal maps, a timestamped recording/export strategy, improved
 rendering benchmarks, and a bridge to the existing FastAPI/PostgreSQL Digital Twin.
