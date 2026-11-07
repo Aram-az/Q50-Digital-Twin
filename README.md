@@ -1,10 +1,10 @@
 # Q50 Digital Twin
 
-**Automotive telemetry engineering — from simulated vehicle data to an original native Infiniti App Garage application.**
+**Automotive telemetry engineering - from simulated vehicle data to an original native Infiniti App Garage application.**
 
 A personal computer-engineering project built around a **2017 Infiniti Q50 Red Sport 400**, combining a synthetic CAN pipeline, C++ decoding, Python simulation, FastAPI, a real-time React instrument cluster, and a **read-only native Android app for the factory InTouch display**.
 
-> **In-car milestone — owner-reported, November 7, 2026:** The native `Q50 Native Telemetry` application was compiled, packaged as an `.epk`, installed and reported working on the developer's 2017 Q50 Red Sport 400. Compatibility with other vehicles, head-unit versions, and sensor calibration remains unverified. The desktop dashboard is **still simulation/recording-driven**; it does **not yet ingest real data from the in-car app**.
+> **In-car milestone - owner-reported, November 7, 2026:** The native `Q50 Native Telemetry` application was compiled, packaged as an `.epk`, installed and reported working on the developer's 2017 Q50 Red Sport 400. Compatibility with other vehicles, head-unit versions, and sensor calibration remains unverified. The desktop dashboard is **still simulation/recording-driven**; it does **not yet ingest real data from the in-car app**.
 
 ## At a glance
 
@@ -53,7 +53,7 @@ Factory infotainment sensor services
 
 The native app uses documented vendor sensor interfaces to **read** available signals; it does not command CAN, flash the ECU, change calibrations or tune the vehicle. Sensor identifiers/scales are provisional and should be independently checked against the vehicle's instruments. Native values are **not yet** transferred into the desktop database.
 
-## Native Q50 app — validated installation milestone
+## Native Q50 app - validated installation milestone
 
 - Custom Java/Canvas instrument UI designed for the legacy **800 × 480** infotainment screen, with RPM and speed dials, thermal and throttle readouts, a raw sensor audit and visible demo mode.
 - Subscribes to available Android vehicle sensors using `SensorManager`; shows missing or stale values instead of inventing live readings.
@@ -74,7 +74,7 @@ The original Phase 4 dashboard was redesigned in Phase 5 and refined in Phase 5.
 
 The presentation takes inspiration from performance instrument clusters but uses original React, SVG and CSS. Gauge ranges and alert thresholds are **not certified Infiniti specifications**.
 
-## Quick start — desktop (Windows PowerShell)
+## Quick start - desktop (Windows PowerShell)
 
 Prerequisites: Python 3.11+, Node.js version supported by the frontend toolchain, and Git. Open PowerShell at the repository root.
 
@@ -152,14 +152,14 @@ The native-app tests, Python tests and browser build are separate; a successful 
 
 ## Project documentation
 
-- [`native-app/README.md`](native-app/README.md) — native code, EPK packaging, Windows setup and credits
-- [`docs/phase1.md`](docs/phase1.md) — synthetic simulator
-- [`docs/phase2.md`](docs/phase2.md) — synthetic CAN encoding and C++ decoding
-- [`docs/phase3.md`](docs/phase3.md) — backend, sessions and WebSockets
-- [`docs/phase4.md`](docs/phase4.md) — dashboard and replay
-- [`docs/phase5.md`](docs/phase5.md) — custom performance instrument design
-- [`docs/phase5-stability.md`](docs/phase5-stability.md) — responsive layout and animation fixes
-- [`native-app/docs/INSTALL_WINDOWS.md`](native-app/docs/INSTALL_WINDOWS.md) — native build and install walkthrough
+- [`native-app/README.md`](native-app/README.md) - native code, EPK packaging, Windows setup and credits
+- [`docs/phase1.md`](docs/phase1.md) - synthetic simulator
+- [`docs/phase2.md`](docs/phase2.md) - synthetic CAN encoding and C++ decoding
+- [`docs/phase3.md`](docs/phase3.md) - backend, sessions and WebSockets
+- [`docs/phase4.md`](docs/phase4.md) - dashboard and replay
+- [`docs/phase5.md`](docs/phase5.md) - custom performance instrument design
+- [`docs/phase5-stability.md`](docs/phase5-stability.md) - responsive layout and animation fixes
+- [`native-app/docs/INSTALL_WINDOWS.md`](native-app/docs/INSTALL_WINDOWS.md) - native build and install walkthrough
 
 ## Next engineering milestones
 
