@@ -28,7 +28,7 @@ A sensor-dropout scenario must appear as a time gap in the playback timeline rat
 
 The pure-Java legacy Android application is designed for App Garage-capable infotainment firmware (Android API 10). Its read-only `SensorManager` listener receives possible vendor vehicle sensor events. `SensorState` tracks timestamps, availability and staleness independently of Canvas drawing. The app does not request network permissions or write to ECUs.
 
-On November 7, 2026, the owner reported successfully building/installing/launching the packaged app on a 2017 Q50 Red Sport 400. Sensor readings, data quality and firmware-specific mappings are *not independently calibrated*. There is no current data path from the native app to the desktop service.
+On November 7, 2026, I built, installed and launched the packaged app on my 2017 Q50 Red Sport 400. Sensor readings, data quality and firmware-specific mappings are *not independently calibrated*. There is no current data path from the native app to the desktop service.
 
 ## 4. Public GitHub Pages showcase
 

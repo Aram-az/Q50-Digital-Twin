@@ -103,7 +103,7 @@ npm run test:logic
 npm run build
 ```
 
-Expected: **4 diagnostic logic tests** and a successful TypeScript/Vite production build. The frontend build was not verified in the artifact-building environment because it has no access to npm's package registry; use these commands locally to complete verification.
+Expected: **4 diagnostic logic tests** and a successful TypeScript/Vite production build. Run these commands locally to verify that the TypeScript checks and production build succeed.
 
 ## Key concepts to learn
 
