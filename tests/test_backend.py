@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import tempfile
+import time
 import unittest
 from urllib.parse import quote
 
@@ -134,6 +135,51 @@ class BackendIntegrationTests(unittest.TestCase):
         loaded = load_samples(file, "renamed-sample")
         self.assertEqual(len(loaded), len(self.samples))
         self.assertTrue(all(s["session_id"] == "renamed-sample" for s in loaded))
+
+    def test_phase4_demo_stream_records_and_completes(self):
+        """Real background simulation writes to the same SQLite API store."""
+        response = self.client.post("/api/v1/demo/sessions", json={
+            "scenario": "acceleration", "duration_s": 1, "hz": 5, "seed": 42,
+        })
+        self.assertEqual(response.status_code, 201, response.text)
+        demo_id = response.json()["session_id"]
+        self.assertTrue(demo_id.startswith("demo-"))
+        deadline = time.monotonic() + 3
+        state = None
+        while time.monotonic() < deadline:
+            state = self.client.get(f"/api/v1/demo/sessions/{demo_id}").json()
+            if state["status"] == "completed":
+                break
+            time.sleep(0.05)
+        self.assertEqual(state["status"], "completed")
+        self.assertEqual(state["sent_samples"], 5)
+        stats = self.client.get(f"/api/v1/sessions/{demo_id}/stats").json()
+        self.assertEqual(stats["count"], 5)
+
+    def test_phase4_demo_stop_preserves_recorded_samples(self):
+        response = self.client.post("/api/v1/demo/sessions", json={
+            "scenario": "mixed", "duration_s": 8, "hz": 10,
+        })
+        demo_id = response.json()["session_id"]
+        time.sleep(0.2)
+        stopped = self.client.post(f"/api/v1/demo/sessions/{demo_id}/stop")
+        self.assertEqual(stopped.status_code, 200)
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            state = self.client.get(f"/api/v1/demo/sessions/{demo_id}").json()
+            if state["status"] == "stopped":
+                break
+            time.sleep(0.05)
+        self.assertEqual(state["status"], "stopped")
+        count = self.client.get(f"/api/v1/sessions/{demo_id}/stats").json()["count"]
+        self.assertGreaterEqual(count, 1)
+        self.assertLess(count, 80)
+
+    def test_phase4_demo_rejects_invalid_parameters(self):
+        for bad in ({"duration_s": 1000}, {"scenario": "ecu_flash"}, {"hz": 0}):
+            response = self.client.post("/api/v1/demo/sessions", json=bad)
+            self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(self.client.post("/api/v1/demo/sessions/doesnotexist/stop").status_code, 404)
 
 
 if __name__ == "__main__":

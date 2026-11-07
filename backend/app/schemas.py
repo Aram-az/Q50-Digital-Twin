@@ -78,3 +78,11 @@ class SessionStats(StrictModel):
     last_elapsed_s: float | None
     max_engine_rpm: float | None
     max_vehicle_speed_kph: float | None
+
+
+class DemoCreate(StrictModel):
+    """Bounded synthetic driving demonstration; never sends vehicle commands."""
+    scenario: Literal["idle", "cruise", "acceleration", "mixed", "overheat", "sensor_dropout"] = "mixed"
+    duration_s: int = Field(default=30, ge=1, le=60)
+    hz: int = Field(default=10, ge=1, le=20)
+    seed: int = Field(default=42, ge=0, le=1_000_000)

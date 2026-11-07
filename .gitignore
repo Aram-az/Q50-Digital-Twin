@@ -22,3 +22,9 @@ data/recordings/
 # Python coverage and editor caches
 .coverage
 htmlcov/
+
+# Phase 4 Vite/React output and local caches
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/.vite/

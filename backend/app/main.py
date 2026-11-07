@@ -7,6 +7,9 @@ Do not expose this unauthenticated development server to the public internet.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import asyncio
+from datetime import datetime
+from uuid import uuid4
 from datetime import timezone
 import os
 from pathlib import Path
@@ -20,8 +23,9 @@ from starlette.concurrency import run_in_threadpool
 
 from backend.app.db import Base, DrivingSession, TelemetryRecord, make_engine, make_session_factory
 from backend.app.hub import TelemetryHub
+from simulator.model import generate_samples
 from backend.app.schemas import (
-    IngestResult, SampleBatch, SampleIn, SampleOut, SessionCreate, SessionOut, SessionStats,
+    IngestResult, SampleBatch, SampleIn, SampleOut, SessionCreate, SessionOut, SessionStats, DemoCreate,
 )
 
 load_dotenv()
@@ -45,11 +49,18 @@ def create_app(database_url: str | None = None) -> FastAPI:
         try:
             yield
         finally:
+            # Stop any simulator jobs before disposing their database connections.
+            for task in _app.state.demo_tasks.values():
+                task.cancel()
+            await asyncio.gather(*_app.state.demo_tasks.values(), return_exceptions=True)
             await run_in_threadpool(engine.dispose)
 
-    app = FastAPI(title="Q50 Digital Twin API", version="0.3.0", lifespan=lifespan,
+    app = FastAPI(title="Q50 Digital Twin API", version="0.4.0", lifespan=lifespan,
                   description="Local-only simulated telemetry ingestion, persistence and streaming.")
     app.state.engine = engine
+    app.state.demo_tasks = {}
+    app.state.demo_stops = {}
+    app.state.demo_status = {}
 
     app.add_middleware(
         CORSMiddleware,
@@ -77,7 +88,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
     def health():
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
-        return {"status": "ok", "database": "connected", "version": "0.3.0"}
+        return {"status": "ok", "database": "connected", "version": "0.4.0"}
 
     @app.post("/api/v1/sessions", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
     def create_session(payload: SessionCreate):
@@ -172,6 +183,85 @@ def create_app(database_url: str | None = None) -> FastAPI:
             return SessionStats(session_id=session_id, count=count, first_elapsed_s=first,
                                 last_elapsed_s=last, max_engine_rpm=max_rpm,
                                 max_vehicle_speed_kph=max_speed)
+
+    # ----------------------------------------------------------------------
+    # Phase 4: local SYNTHETIC simulator control (never reads/writes a vehicle).
+    # ----------------------------------------------------------------------
+    async def run_demo(session_id: str, request: DemoCreate, stop: asyncio.Event):
+        """Persist and broadcast simulated samples approximately at their sample rate.
+
+        CAN decoding is NOT part of this live demo pipeline. The Phase 2 CAN
+        decoder can still feed the backend using the existing publisher CLI.
+        """
+        info = app.state.demo_status[session_id]
+        start_time = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        try:
+            for entry in generate_samples(
+                scenario="mixed" if request.scenario in {"overheat", "sensor_dropout"} else request.scenario,
+                duration_s=request.duration_s, hz=request.hz, seed=request.seed,
+                start_time_utc=start_time, session_id=session_id,
+            ):
+                if stop.is_set():
+                    break
+                sample = entry.to_dict()
+                if request.scenario == "overheat" and entry.elapsed_s >= 4:
+                    # Clearly fabricated fault: intentionally exceeds demo-only limits.
+                    sample["coolant_temp_c"] = round(min(122.0, 92.0 + (entry.elapsed_s - 4) * 3.5), 2)
+                if request.scenario == "sensor_dropout" and 4 <= entry.elapsed_s < 6:
+                    # Deliberately omit samples to simulate data loss, not engine failure.
+                    await asyncio.sleep(1 / request.hz)
+                    continue
+                validated = SampleIn.model_validate(sample)
+                await run_in_threadpool(insert_batch, session_id, SampleBatch(samples=[validated]))
+                await hub.broadcast(session_id, {"type": "telemetry", "session_id": session_id, "sample": sample})
+                info["sent_samples"] += 1
+                await asyncio.sleep(1 / request.hz)
+            info["status"] = "stopped" if stop.is_set() else "completed"
+        except asyncio.CancelledError:
+            info["status"] = "stopped"
+            raise
+        except Exception:
+            # Internal details remain in server logs; never stream tracebacks to clients.
+            import logging
+            logging.exception("Synthetic demo failed: %s", session_id)
+            info["status"] = "error"
+        finally:
+            await hub.broadcast(session_id, {"type": "demo_status", "session_id": session_id,
+                                             "status": info["status"]})
+            app.state.demo_tasks.pop(session_id, None)
+            app.state.demo_stops.pop(session_id, None)
+
+    @app.post("/api/v1/demo/sessions", status_code=status.HTTP_201_CREATED)
+    async def start_demo(request: DemoCreate):
+        """Start a bounded, simulation-only stream. Local dev server only."""
+        session_id = "demo-" + uuid4().hex[:12]
+        await run_in_threadpool(create_session, SessionCreate(
+            session_id=session_id,
+            label=f"{request.scenario.replace('_', ' ').title()} · Synthetic Demo",
+            source="simulation",
+        ))
+        stop = asyncio.Event()
+        app.state.demo_status[session_id] = {"session_id": session_id, "status": "running",
+                                              "sent_samples": 0, "scenario": request.scenario}
+        app.state.demo_stops[session_id] = stop
+        app.state.demo_tasks[session_id] = asyncio.create_task(run_demo(session_id, request, stop))
+        return {"session_id": session_id, "status": "running", "scenario": request.scenario}
+
+    @app.get("/api/v1/demo/sessions/{session_id}")
+    def demo_status(session_id: str):
+        result = app.state.demo_status.get(session_id)
+        if result is None:
+            raise HTTPException(404, "No active or remembered demo with that ID")
+        return result
+
+    @app.post("/api/v1/demo/sessions/{session_id}/stop")
+    def stop_demo(session_id: str):
+        if session_id not in app.state.demo_status:
+            raise HTTPException(404, "Unknown demo")
+        stop = app.state.demo_stops.get(session_id)
+        if stop is not None:
+            stop.set()
+        return {"session_id": session_id, "status": "stopping" if stop else app.state.demo_status[session_id]["status"]}
 
     @app.websocket("/ws/telemetry/{session_id}")
     async def telemetry_websocket(websocket: WebSocket, session_id: str):

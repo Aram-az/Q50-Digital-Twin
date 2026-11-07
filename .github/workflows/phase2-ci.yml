@@ -1,28 +1,45 @@
-name: Q50 Phases 1-3 CI
+name: Q50 Phases 1-4 CI
 
 on:
   push:
   pull_request:
 
 jobs:
-  tests:
+  backend-and-cpp:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Phase 3 dependencies
+      - name: Install Python dependencies
         run: python -m pip install -r backend/requirements.txt
-      - name: Build Phase 2 C++17 decoder
+      - name: Build C++17 decoder
         run: |
           mkdir -p decoder/bin
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic decoder/src/main.cpp -o decoder/bin/q50-can-decoder.exe
-      - name: Run all 31 automated tests (SQLite)
+      - name: Run all Python integration tests
         run: python -m unittest discover -s tests -v
-      - name: Smoke test Python -> C++ round trip
+      - name: Verify Python-to-C++ telemetry round trip
         run: |
           python -m simulator.cli --scenario mixed --duration 10 --hz 10 --output data/sample/ci_10s.jsonl
           python -m canbus.cli --input data/sample/ci_10s.jsonl --output data/can/ci_10s.canlog
           ./decoder/bin/q50-can-decoder.exe --input data/can/ci_10s.canlog --output data/decoded/ci_10s.jsonl
           python tools/verify_roundtrip.py data/sample/ci_10s.jsonl data/decoded/ci_10s.jsonl
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install frontend dependencies
+        run: npm install
+      - name: Run synthetic diagnostics tests
+        run: npm run test:logic
+      - name: Typecheck and compile frontend
+        run: npm run build
