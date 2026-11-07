@@ -1,0 +1,21 @@
+# PostgreSQL for local development; only accessible from this computer.
+# Demo credentials only; never use these settings on public infrastructure.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: q50digitaltwin
+      POSTGRES_USER: q50dev
+      POSTGRES_PASSWORD: q50_dev_only
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - q50_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U q50dev -d q50digitaltwin"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  q50_postgres_data:

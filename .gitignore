@@ -12,3 +12,13 @@ data/recordings/
 *.tmp
 # Generated runtime output beyond small checked-in examples
 /data/recordings/
+
+# Phase 3 local databases / SQLite journal files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+# Python coverage and editor caches
+.coverage
+htmlcov/
