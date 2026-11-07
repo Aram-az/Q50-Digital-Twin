@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react';
 
 // Same-origin proxy: browser talks to Vite; Vite forwards to the local API.
 // This supports WebSockets without manually hardcoding IP addresses in React.
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  base: mode === 'showcase' ? '/Q50-Digital-Twin/' : '/',
   plugins: [react()],
   server: {
     port: 5173,
@@ -14,4 +15,4 @@ export default defineConfig({
       '/ws': { target: 'ws://127.0.0.1:8000', ws: true },
     },
   },
-});
+}));

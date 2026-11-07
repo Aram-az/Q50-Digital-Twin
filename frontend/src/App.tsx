@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, websocketUrl } from './lib/api';
 import { analyzeTelemetry } from './lib/diagnostics';
 import { previewSamples } from './lib/preview';
+import { generateShowcaseSession } from './lib/showcase';
 import { previewPingPongIndex } from './lib/instrumentMath';
 import type { DemoScenario, DrivingSession, TelemetrySample } from './lib/types';
 import { InstrumentDial, AuxDial, Oscilloscope, RevLights, ThrottleStack } from './components/Instrument';
 
 const preview = previewSamples();
+// Pages uses a browser-only showcase; local Vite development still uses FastAPI.
+const showcase = import.meta.env.MODE === 'showcase';
 const scenarioOptions: { value: DemoScenario; title: string }[] = [
   { value: 'mixed', title: 'Mixed driving' },
   { value: 'acceleration', title: 'Acceleration' },
@@ -45,7 +48,7 @@ function formatClock(secs: number) {
 }
 
 export default function App() {
-  const [online, setOnline] = useState(false);
+  const [online, setOnline] = useState(showcase);
   const [sessions, setSessions] = useState<DrivingSession[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [samples, setSamples] = useState<TelemetrySample[]>([]);
@@ -62,8 +65,11 @@ export default function App() {
   const [playbackRun, setPlaybackRun] = useState(0);
   const [previewFrame, setPreviewFrame] = useState(0);
   const [preset, setPreset] = useState<1 | 2 | 3 | 4>(1);
+  const [showcaseArchive, setShowcaseArchive] = useState<Record<string, TelemetrySample[]>>({});
+  const [showcaseRun, setShowcaseRun] = useState<{ id: string; records: TelemetrySample[]; startedAt: number } | null>(null);
 
   const refreshSessions = useCallback(async () => {
+    if (showcase) return; // No network requests on GitHub Pages.
     const list = await api.sessions();
     setSessions(list);
     setSelectedId(existing => existing || list[0]?.session_id || null);
@@ -71,6 +77,7 @@ export default function App() {
 
   // Health is separate from WebSocket status: API can be healthy with no selected session.
   useEffect(() => {
+    if (showcase) return;
     let alive = true;
     const check = () => {
       api.health().then(() => { if (alive) setOnline(true); }).catch(() => { if (alive) setOnline(false); });
@@ -87,7 +94,7 @@ export default function App() {
 
   // On selection, load existing history and subscribe to new committed telemetry.
   useEffect(() => {
-    if (!selectedId || !online) return;
+    if (showcase || !selectedId || !online) return;
     let active = true;
     let retry: number | undefined;
     let ws: WebSocket | undefined;
@@ -136,6 +143,24 @@ export default function App() {
     return () => { active = false; if (retry) clearTimeout(retry); ws?.close(); };
   }, [selectedId, refreshSessions, online]);
 
+  // Public showcase: stream synthetic samples in-browser at 10 Hz, with no backend,
+  // database, microphone, camera, car interface or outgoing telemetry requests.
+  useEffect(() => {
+    if (!showcase || !showcaseRun) return;
+    const run = showcaseRun;
+    const interval = window.setInterval(() => {
+      const elapsedMs = Math.max(0, performance.now() - run.startedAt);
+      const count = Math.min(run.records.length, Math.floor(elapsedMs / 100) + 1);
+      if (selectedId === run.id) setSamples(run.records.slice(0, count));
+      if (count >= run.records.length) {
+        setShowcaseRun(current => current?.id === run.id ? null : current);
+        setDemoStatus('complete');
+        setSessions(current => current.map(item => item.session_id === run.id ? { ...item, sample_count: count } : item));
+      }
+    }, 100);
+    return () => window.clearInterval(interval);
+  }, [showcaseRun, selectedId]);
+
   // Instrument-attract mode: cycle a clearly marked synthetic trace even with no API.
   useEffect(() => {
     if (online && selectedId && samples.length > 0) return;
@@ -166,6 +191,22 @@ export default function App() {
   }, [playing, playbackRun, speed, followLive, samples]);
 
   async function startDemo() {
+    if (showcase) {
+      const id = `browser-${Date.now()}`;
+      const records = generateShowcaseSession(scenario, duration, id);
+      const label = `${scenario.replaceAll('_', ' ').toUpperCase()} / ${duration}s · browser demo`;
+      setShowcaseArchive(current => ({ ...current, [id]: records }));
+      setSessions(current => [{ session_id: id, label, source: 'simulation', created_at: new Date().toISOString(), sample_count: 0 }, ...current]);
+      setSelectedId(id);
+      setSamples(records.slice(0, 1));
+      setCursor(0);
+      setFollowLive(true);
+      setPlaying(false);
+      setDemoStatus('running');
+      setError('');
+      setShowcaseRun({ id, records, startedAt: performance.now() });
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -183,11 +224,30 @@ export default function App() {
 
   async function stopDemo() {
     if (!selectedId) return;
+    if (showcase) {
+      if (showcaseRun) {
+        // Stop the active run even if a different session is being viewed.
+        const elapsedMs = Math.max(0, performance.now() - showcaseRun.startedAt);
+        const count = Math.min(showcaseRun.records.length, Math.floor(elapsedMs / 100) + 1);
+        const committed = showcaseRun.records.slice(0, count);
+        setShowcaseArchive(current => ({ ...current, [showcaseRun.id]: committed }));
+        setSessions(current => current.map(item => item.session_id === showcaseRun.id ? { ...item, sample_count: count } : item));
+        if (selectedId === showcaseRun.id) setSamples(committed);
+      }
+      setShowcaseRun(null);
+      setDemoStatus('stopped');
+      return;
+    }
     try { await api.stopDemo(selectedId); setDemoStatus('stopping'); }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not stop demo'); }
   }
 
   function chooseSession(id: string) {
+    if (showcase) {
+      const history = showcaseArchive[id] ?? [];
+      setSamples(history);
+      setCursor(Math.max(0, history.length - 1));
+    }
     setFollowLive(false);
     setPlaying(false);
     setSelectedId(id);
@@ -205,7 +265,7 @@ export default function App() {
   function pauseReplay() { setPlaying(false); }
 
   // While API history is loading or a new run has no data yet, show clearly labelled preview data.
-  const offline = !online || !selectedId || samples.length === 0;
+  const offline = !selectedId || samples.length === 0 || (!showcase && !online);
   const displaySamples = offline ? preview : samples;
   const shownIndex = offline ? previewPingPongIndex(previewFrame, preview.length) : followLive ? displaySamples.length - 1 : Math.min(cursor, displaySamples.length - 1);
   const sample = shownIndex >= 0 ? displaySamples[shownIndex] : null;
@@ -213,7 +273,7 @@ export default function App() {
   const events = useMemo(() => analyzeTelemetry(plotted), [plotted]);
   const selectedSession = sessions.find(s => s.session_id === selectedId);
   const hottest = sample ? sample.coolant_temp_c >= 105 : false;
-  const isRunning = demoStatus === 'running' || demoStatus === 'stopping';
+  const isRunning = showcase ? showcaseRun !== null : demoStatus === 'running' || demoStatus === 'stopping';
   const latestTime = displaySamples.at(-1)?.elapsed_s ?? 0;
   const currentTime = sample?.elapsed_s ?? 0;
   // Peak indicators only include measurements up to the replay cursor, not future samples.
@@ -221,13 +281,17 @@ export default function App() {
   const maxRpm = plotted.reduce((m, s) => Math.max(m, s.engine_rpm), 0);
 
   const active = sample ?? preview[0];
-  const currentSource = offline ? (online && selectedId ? 'PREVIEW / AWAITING DATA' : 'DEMONSTRATION / LOOP') : followLive ? 'SIMULATION / LIVE' : 'RECORDED / PLAYBACK';
+  const currentSource = offline ? 'DEMONSTRATION / LOOP' : showcase ? (followLive ? 'BROWSER SYNTHETIC / LIVE' : 'BROWSER SYNTHETIC / REPLAY') : followLive ? 'SIMULATION / LIVE' : 'RECORDED / PLAYBACK';
   const maxCoolant = plotted.reduce((m, s) => Math.max(m, s.coolant_temp_c), 0);
   const alertCount = events.length;
   const presetNames = ['DRIVE', 'THERMAL', 'TRACE', 'LOGBOOK'] as const;
 
   return <div className="q50-app">
     <div className="dash-width">
+      {showcase && <div className="showcase-banner">
+        <span><b>PUBLIC SHOWCASE</b> · Synthetic telemetry generated entirely in this browser · Not connected to a car</span>
+        <span className="showcase-links"><a href="https://github.com/Aram-az/Q50-Digital-Twin">SOURCE CODE ↗</a><a href="https://github.com/Aram-az/Q50-Digital-Twin/tree/main/native-app">IN-CAR ANDROID APP ↗</a></span>
+      </div>}
       <header className="masthead">
         <div className="identity">
           <div className="identity-slash" aria-hidden="true"><span/><span/><span/></div>
@@ -236,8 +300,8 @@ export default function App() {
         </div>
         <div className="masthead-right">
           <span className="machine-id">2017 / VR30DDTT / STAGE 2 INSPIRED</span>
-          <span className={`link-indicator ${online ? 'linked':'unlinked'}`}><i/>{online ? 'BACKEND ONLINE' : 'LOCAL PREVIEW'}</span>
-          <span className="edition-plate">BUILD <b>05</b> <span>/</span> SIM ONLY</span>
+          <span className={`link-indicator ${online ? 'linked':'unlinked'}`}><i/>{showcase ? 'BROWSER SHOWCASE' : online ? 'BACKEND ONLINE' : 'LOCAL PREVIEW'}</span>
+          <span className="edition-plate">BUILD <b>06</b> <span>/</span> {showcase ? 'WEB DEMO' : 'LOCAL'}</span>
         </div>
       </header>
 
@@ -257,7 +321,7 @@ export default function App() {
               <div className="center-data-sub">{formatClock(currentTime)} <span>/</span> {formatClock(latestTime)}</div>
             </div>
             <ThrottleStack value={active.throttle_pct}/>
-            <div className="center-status"><span className={online ? 'light-ok' : 'light-demo'}/> {offline ? (online && selectedId ? 'AWAITING LIVE SAMPLES' : 'LOCAL GENERATED DATA') : socketConnected ? 'TELEMETRY LINK ACTIVE' : 'LINK CONNECTING'}</div>
+            <div className="center-status"><span className={online ? 'light-ok' : 'light-demo'}/> {showcase ? 'LOCAL SYNTHETIC STREAM' : offline ? (online && selectedId ? 'AWAITING LIVE SAMPLES' : 'LOCAL GENERATED DATA') : socketConnected ? 'TELEMETRY LINK ACTIVE' : 'LINK CONNECTING'}</div>
           </div>
           <InstrumentDial label="GROUND SPEED" kind="speed" value={active.vehicle_speed_kph} max={240} step={40} display={active.vehicle_speed_kph.toFixed(0)} units="km/h" detail="CALIBRATED UI SCALE / DEMO" />
         </div>
@@ -272,7 +336,7 @@ export default function App() {
       <div className="deck-section-title"><span className="index-label">/ 02</span><span>MULTI-FUNCTION DISPLAY</span><i/> <span className="deck-note">SELECT A PRESET</span></div>
       <section className="mfd-housing" aria-label="Multi-function telemetry display">
         <header className="mfd-toolbar">
-          <div className="mfd-title"><strong>MFD</strong><span>LIVE DATA / ENGINEERING EDITION</span></div>
+          <div className="mfd-title"><strong>MFD</strong><span>{showcase ? 'BROWSER SIMULATION / ENGINEERING EDITION' : 'LIVE DATA / ENGINEERING EDITION'}</span></div>
           <nav className="preset-selector" aria-label="Display preset">
             {presetNames.map((name,index) => <button type="button" key={name} className={preset===index+1 ? 'preset-button active':''}
               onClick={()=>setPreset((index+1) as 1|2|3|4)} aria-pressed={preset===index+1}>
@@ -300,10 +364,10 @@ export default function App() {
           {preset===3 && <div className="trace-preset">
             <Oscilloscope samples={plotted} field="engine_rpm" label="ENGINE RPM" unit="rpm" color="#e9e8de"/>
             <Oscilloscope samples={plotted} field="vehicle_speed_kph" label="ROAD SPEED" unit="km/h" color="#e64f42" />
-            <div className="trace-footer"><span>CAPTURE <b>{displaySamples.length} SAMPLES</b></span><span>SOURCE <b>{offline?'LOCAL PREVIEW':'BACKEND RECORD'}</b></span><span>CURSOR <b>{formatClock(currentTime)}</b></span></div>
+            <div className="trace-footer"><span>CAPTURE <b>{displaySamples.length} SAMPLES</b></span><span>SOURCE <b>{offline?'LOCAL PREVIEW':showcase?'BROWSER SYNTHETIC':'BACKEND RECORD'}</b></span><span>CURSOR <b>{formatClock(currentTime)}</b></span></div>
           </div>}
           {preset===4 && <div className="log-preset">
-            <div className="log-column"><div className="log-title"><span>01 / SESSION ARCHIVE</span><button type="button" onClick={() => void refreshSessions().catch(e => setError(String(e)))} disabled={!online}>REFRESH ↻</button></div>
+            <div className="log-column"><div className="log-title"><span>01 / SESSION ARCHIVE</span><button type="button" onClick={() => void refreshSessions().catch(e => setError(String(e)))} disabled={!online||showcase}>{showcase ? 'LOCAL ARCHIVE' : 'REFRESH ↻'}</button></div>
               {sessions.length===0 ? <p className="log-empty">NO SAVED DRIVES. START A SYNTHETIC SESSION BELOW TO RECORD A LOG.</p> : <div className="log-scroll">
                 {sessions.slice(0,25).map(session=><button type="button" key={session.session_id} className={`log-entry ${selectedId===session.session_id?'selected':''}`} onClick={()=>chooseSession(session.session_id)}>
                   <span className="log-entry-icon">▣</span><span className="log-entry-label"><strong>{session.label}</strong><small>{session.session_id}</small></span><span className="log-entry-count">{session.sample_count}<small>PTS</small></span>
@@ -318,7 +382,7 @@ export default function App() {
         <footer className="mfd-footer"><span>PRESET <b>{String(preset).padStart(2,'0')} / {presetNames[preset-1]}</b></span><span>{offline?'DEMO GENERATOR':'SIMULATED SESSION'} <b>•</b> {displaySamples.length} PTS</span><button type="button" onClick={()=>setPreset(preset===4?1:((preset+1) as 1|2|3|4))}>NEXT DISPLAY ↗</button></footer>
       </section>
 
-      <div className="deck-section-title deck-section-title--lower"><span className="index-label">/ 03</span><span>RUN CONTROL / DATA TRANSPORT</span><i/><span className="deck-note">LOCAL DEVELOPMENT ONLY</span></div>
+      <div className="deck-section-title deck-section-title--lower"><span className="index-label">/ 03</span><span>RUN CONTROL / DATA TRANSPORT</span><i/><span className="deck-note">{showcase ? 'PUBLIC OFFLINE DEMO' : 'LOCAL DEVELOPMENT ONLY'}</span></div>
       <section className="control-rack" aria-label="Simulator and playback controls">
         <div className="control-block simulator-block">
           <div className="control-head">DRIVE SIMULATOR <span className="control-subhead">NO CONNECTION TO VEHICLE</span></div>
@@ -326,9 +390,9 @@ export default function App() {
             <label>SCENARIO<select aria-label="Driving scenario" value={scenario} onChange={event=>setScenario(event.target.value as DemoScenario)}>{scenarioOptions.map(s=><option key={s.value} value={s.value}>{s.title}</option>)}</select></label>
             <label>RUN LENGTH<select aria-label="Duration" value={duration} onChange={e=>setDuration(Number(e.target.value))}><option value={15}>15 sec</option><option value={30}>30 sec</option><option value={60}>60 sec</option></select></label>
           </div>
-          <div className="ignition-controls"><button className="ignition-button" type="button" onClick={()=>void startDemo()} disabled={!online||busy||isRunning}><span className="ignition-ring"><i/></span><span><b>{busy?'INITIALIZING':'START SIMULATION'}</b><small>VIRTUAL IGNITION</small></span></button>
+          <div className="ignition-controls"><button className="ignition-button" type="button" onClick={()=>void startDemo()} disabled={(!online&&!showcase)||busy||isRunning}><span className="ignition-ring"><i/></span><span><b>{busy?'INITIALIZING':'START SIMULATION'}</b><small>VIRTUAL IGNITION</small></span></button>
             <button className="stop-button" type="button" onClick={()=>void stopDemo()} disabled={!isRunning||!selectedId}>■ STOP</button></div>
-          <div className="run-status"><i className={isRunning?'blink':''}/>{!online?'CONNECT FASTAPI TO RUN':isRunning?'SYNTHETIC STREAM ACTIVE':demoStatus?`SIMULATOR / ${demoStatus.toUpperCase()}`:'SIMULATOR ARMED / READY'}</div>
+          <div className="run-status"><i className={isRunning?'blink':''}/>{showcase ? (isRunning ? 'BROWSER-ONLY SYNTHETIC STREAM ACTIVE' : 'BROWSER DEMO READY / NO SERVER REQUIRED') : !online?'CONNECT FASTAPI TO RUN':isRunning?'SYNTHETIC STREAM ACTIVE':demoStatus?`SIMULATOR / ${demoStatus.toUpperCase()}`:'SIMULATOR ARMED / READY'}</div>
         </div>
         <div className="control-block transport-block">
           <div className="control-head">SESSION TRANSPORT <span className="control-subhead">TIMESTAMP-ACCURATE REPLAY</span></div>
@@ -342,7 +406,7 @@ export default function App() {
           <div className="tape-note">{selectedSession?.label||'BUILT-IN 18 SECOND PREVIEW'} <span> / {selectedId||'NO SESSION SELECTED'}</span></div>
         </div>
       </section>
-      <footer className="page-footer"><span><b>Q50 // DT05</b> — INDEPENDENT TELEMETRY DESIGN STUDY</span><span>R35 PERFORMANCE DISPLAY-INSPIRED · ORIGINAL INTERFACE</span><span className="safety-foot">SIMULATION ONLY. NOT OEM GAUGES OR VALIDATED VEHICLE DIAGNOSTICS.</span></footer>
+      <footer className="page-footer"><span><b>Q50 // DT05</b> — INDEPENDENT TELEMETRY DESIGN STUDY</span><span>R35 PERFORMANCE DISPLAY-INSPIRED · ORIGINAL INTERFACE</span><span className="safety-foot">{showcase ? 'PUBLIC SITE: BROWSER-GENERATED DATA ONLY. IN-CAR APP IS A SEPARATE MODULE.' : 'SIMULATION ONLY. NOT OEM GAUGES OR VALIDATED VEHICLE DIAGNOSTICS.'}</span></footer>
     </div>
   </div>;
 }

@@ -1,31 +1,55 @@
-name: Q50 Phases 1-4 CI
+name: Q50 Digital Twin CI
 
 on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  backend-and-cpp:
+  python-and-cpp:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Python dependencies
+      - name: Install backend dependencies
         run: python -m pip install -r backend/requirements.txt
       - name: Build C++17 decoder
         run: |
           mkdir -p decoder/bin
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic decoder/src/main.cpp -o decoder/bin/q50-can-decoder.exe
-      - name: Run all Python integration tests
+      - name: Run Python integration tests
         run: python -m unittest discover -s tests -v
-      - name: Verify Python-to-C++ telemetry round trip
+      - name: Verify synthetic CAN round trip
         run: |
           python -m simulator.cli --scenario mixed --duration 10 --hz 10 --output data/sample/ci_10s.jsonl
           python -m canbus.cli --input data/sample/ci_10s.jsonl --output data/can/ci_10s.canlog
           ./decoder/bin/q50-can-decoder.exe --input data/can/ci_10s.canlog --output data/decoded/ci_10s.jsonl
           python tools/verify_roundtrip.py data/sample/ci_10s.jsonl data/decoded/ci_10s.jsonl
+
+  native-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install EPK tool dependencies
+        run: python -m pip install -r native-app/requirements-build.txt
+      - name: Check EPK builder and Android manifest
+        run: python -m unittest discover -s native-app/tests -p 'test_*.py' -v
+      - name: Run portable Java sensor-state tests
+        run: |
+          mkdir -p native-app/build/test-classes
+          javac --release 8 -d native-app/build/test-classes native-app/src/com/aram/q50telemetry/SensorState.java native-app/tests/SensorStateTest.java
+          java -cp native-app/build/test-classes SensorStateTest
 
   frontend:
     runs-on: ubuntu-latest
@@ -37,9 +61,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install frontend dependencies
-        run: npm install
-      - name: Run synthetic diagnostics tests
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies from lockfile
+        run: npm ci
+      - name: Test telemetry and gauge logic
         run: npm run test:logic
-      - name: Typecheck and compile frontend
+      - name: Build local-mode frontend
         run: npm run build
+      - name: Build public GitHub Pages showcase
+        run: npm run build:showcase

@@ -349,3 +349,11 @@ select:hover{border-color:#8d958c}
   .aux-foot { font-size:8px; }
   .control-block { padding:10px; }
 }
+
+/* Public Pages demo: compact engineering annotation with repo navigation. */
+.showcase-banner{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px 20px;padding:10px 12px;margin-bottom:10px;background:#1d211e;border:1px solid #656f60;color:#b8c6b2;font:11px/1.6 Consolas,monospace;letter-spacing:.2px}
+.showcase-banner b{color:#e9efde;letter-spacing:.9px}
+.showcase-links{display:flex;gap:18px;flex-wrap:wrap}
+.showcase-links a{color:#f0a794;text-decoration:none;font-weight:bold;white-space:nowrap}
+.showcase-links a:hover,.showcase-links a:focus-visible{text-decoration:underline;color:#ffdfc7}
+@media(max-width:600px){.showcase-banner{font-size:10px}.showcase-links{gap:12px}}

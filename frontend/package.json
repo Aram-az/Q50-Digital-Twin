@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
+    "build:showcase": "tsc -b && vite build --mode showcase",
     "preview": "vite preview --host 127.0.0.1",
+    "preview:showcase": "vite preview --mode showcase --host 127.0.0.1",
     "test:logic": "node --experimental-strip-types --test tests/*.test.mjs"
   },
   "dependencies": {
