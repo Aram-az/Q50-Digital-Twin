@@ -1,4 +1,4 @@
-# Phase 1 — Simulation foundation
+# Phase 1 - Simulation foundation
 
 ## Scope
 Synthetic vehicle telemetry, fixed-step deterministic simulation, normalized data schema, CLI recording to JSONL/CSV and automated tests.

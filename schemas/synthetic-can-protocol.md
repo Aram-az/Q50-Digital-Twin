@@ -1,4 +1,4 @@
-# Synthetic CAN protocol v1 — controlled simulation ONLY
+# Synthetic CAN protocol v1 - controlled simulation ONLY
 
 **This is not the Nissan/Infiniti CAN database or an OBD-II request/response mapping.**
 The IDs `0x500` and `0x501` are invented identifiers for a virtual network.

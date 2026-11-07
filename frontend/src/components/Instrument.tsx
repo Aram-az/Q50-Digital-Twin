@@ -106,7 +106,7 @@ export function AuxDial({ label, value, unit, min, max, warning = false, descrip
         const p = polar(100,100,68,ang), q = polar(100,100,78,ang);
         return <line key={i} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke="#e3e2dc" strokeWidth={i%5===0?2.4:1} opacity={i%5===0?1:.55}/>;
       })}
-      <text x="100" y="76" textAnchor="middle" className="aux-number">{Number.isFinite(value) ? value.toFixed(unit === 'RPM' || unit === 'km/h' ? 0 : 1) : '—'}</text>
+      <text x="100" y="76" textAnchor="middle" className="aux-number">{Number.isFinite(value) ? value.toFixed(unit === 'RPM' || unit === 'km/h' ? 0 : 1) : '-'}</text>
       <text x="100" y="95" textAnchor="middle" className="aux-unit">{unit}</text>
       <text x="25" y="117" className="aux-min">{min}</text><text x="175" y="117" textAnchor="end" className="aux-min">{max}</text>
     </svg>
@@ -137,7 +137,7 @@ export function Oscilloscope({ samples, field, label, unit, color = '#d9d9d3' }:
   });
   const selected = hover === null ? recent.at(-1) : recent[hover];
   return <div className="oscilloscope">
-    <div className="scope-head"><span><i className="scope-channel" style={{ backgroundColor: color }}/> {label}</span><strong>{selected ? selected[field].toFixed(1) : '—'} <small>{unit}</small></strong></div>
+    <div className="scope-head"><span><i className="scope-channel" style={{ backgroundColor: color }}/> {label}</span><strong>{selected ? selected[field].toFixed(1) : '-'} <small>{unit}</small></strong></div>
     <svg viewBox="0 0 636 210" role="img" aria-label={`${label} time series`} onMouseLeave={() => setHover(null)}>
       {Array.from({length: 9}, (_,i) => <line key={`v${i}`} x1={18 + i*75} y1="10" x2={18 + i*75} y2="172" stroke="#343a38" strokeWidth="1" opacity=".6"/>)}
       {Array.from({length: 5}, (_,i) => <line key={`h${i}`} x1="18" y1={28+i*34.5} x2="618" y2={28+i*34.5} stroke="#343a38" strokeWidth="1" opacity=".6"/>)}

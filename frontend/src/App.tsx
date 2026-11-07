@@ -406,7 +406,7 @@ export default function App() {
           <div className="tape-note">{selectedSession?.label||'BUILT-IN 18 SECOND PREVIEW'} <span> / {selectedId||'NO SESSION SELECTED'}</span></div>
         </div>
       </section>
-      <footer className="page-footer"><span><b>Q50 // DT05</b> — INDEPENDENT TELEMETRY DESIGN STUDY</span><span>R35 PERFORMANCE DISPLAY-INSPIRED · ORIGINAL INTERFACE</span><span className="safety-foot">{showcase ? 'PUBLIC SITE: BROWSER-GENERATED DATA ONLY. IN-CAR APP IS A SEPARATE MODULE.' : 'SIMULATION ONLY. NOT OEM GAUGES OR VALIDATED VEHICLE DIAGNOSTICS.'}</span></footer>
+      <footer className="page-footer"><span><b>Q50 // DT05</b> - INDEPENDENT TELEMETRY DESIGN STUDY</span><span>R35 PERFORMANCE DISPLAY-INSPIRED · ORIGINAL INTERFACE</span><span className="safety-foot">{showcase ? 'PUBLIC SITE: BROWSER-GENERATED DATA ONLY. IN-CAR APP IS A SEPARATE MODULE.' : 'SIMULATION ONLY. NOT OEM GAUGES OR VALIDATED VEHICLE DIAGNOSTICS.'}</span></footer>
     </div>
   </div>;
 }

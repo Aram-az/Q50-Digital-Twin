@@ -1,4 +1,4 @@
-# Phase 4 — React telemetry dashboard and simulated diagnostics
+# Phase 4 - React telemetry dashboard and simulated diagnostics
 
 **Safety:** Simulation only. This project does not read from a vehicle, flash an ECU, actuate anything or send CAN traffic to a car. Fault thresholds are instructional and not Infiniti-specific.
 
@@ -79,9 +79,9 @@ The "live" demo uses **Python simulator → FastAPI → database → WebSocket �
 
 ## Important backend routes
 
-- `POST /api/v1/demo/sessions` — creates a session and starts a bounded synthetic stream. Body e.g. `{"scenario":"mixed","duration_s":30,"hz":10,"seed":42}`.
-- `GET /api/v1/demo/sessions/{id}` — status and sample count for an in-memory demo job.
-- `POST /api/v1/demo/sessions/{id}/stop` — requests stopping the job.
+- `POST /api/v1/demo/sessions` - creates a session and starts a bounded synthetic stream. Body e.g. `{"scenario":"mixed","duration_s":30,"hz":10,"seed":42}`.
+- `GET /api/v1/demo/sessions/{id}` - status and sample count for an in-memory demo job.
+- `POST /api/v1/demo/sessions/{id}/stop` - requests stopping the job.
 - Existing Phase 3 routes for session history, sample pagination, statistics and WebSockets are unchanged.
 
 Demo task status is held in one local server process and does not survive a restart; the **committed telemetry history does survive**. A production system would use a durable task queue and shared pub/sub. Keep **one Uvicorn worker**.

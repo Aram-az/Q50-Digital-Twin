@@ -1,4 +1,4 @@
-# Phase 5.1 — Instrument stability and layout patch
+# Phase 5.1 - Instrument stability and layout patch
 
 This is a **frontend-only** patch built from the distributed Phase 5 source. It does not change the Python backend, database, vehicle simulator, C++ decoder, or CAN frame protocol.
 

@@ -1,4 +1,4 @@
-# Phase 2 — Synthetic CAN + C++ decoder
+# Phase 2 - Synthetic CAN + C++ decoder
 
 ## Objective
 Turn the Phase 1 JSONL telemetry stream into simulated CAN data payloads,

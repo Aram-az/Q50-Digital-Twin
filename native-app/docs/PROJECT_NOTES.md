@@ -1,4 +1,4 @@
-# Technical specification — Q50 native proof of concept
+# Technical specification - Q50 native proof of concept
 
 ## System boundary
 

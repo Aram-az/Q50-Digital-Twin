@@ -1,4 +1,4 @@
-/* Q50 / DT05 — independent motorsport-instrument design, not a replica of Nissan software.
+/* Q50 / DT05 - independent motorsport-instrument design, not a replica of Nissan software.
  * Visual materials: graphite instrument well, warm white silkscreen, analog red pointer,
  * physical preset buttons and a dense early-2000s telemetry multi-function display.
  */
@@ -303,7 +303,7 @@ select:hover{border-color:#8d958c}
   *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
 }
 
-/* Phase 5.1 — instrument alignment and narrow-screen stability fixes. */
+/* Phase 5.1 - instrument alignment and narrow-screen stability fixes. */
 @media (max-width:1100px) and (min-width:921px) {
   .cluster-center { gap:9px; }
   .center-hatch span { font-size:clamp(39px,4vw,51px); }

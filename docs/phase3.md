@@ -1,4 +1,4 @@
-# Phase 3 — Backend, Real-Time Streaming & Persistent Storage
+# Phase 3 - Backend, Real-Time Streaming & Persistent Storage
 
 ## Goal
 
@@ -76,7 +76,7 @@ g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic decoder/src/main.cpp -o decoder/bin/
 
 Expected: **31 tests, OK**, with **no skipped** C++ tests.
 
-### Terminal A — API server
+### Terminal A - API server
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
@@ -92,7 +92,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 Expected JSON object: `{"status":"ok","database":"connected","version":"0.3.0"}`.
 
-### Terminal B — create session and watch live telemetry
+### Terminal B - create session and watch live telemetry
 
 ```powershell
 $body = @{session_id="phase3-live-001"; label="My first live stream"; source="simulation"} | ConvertTo-Json
@@ -102,7 +102,7 @@ Invoke-RestMethod -Uri http://127.0.0.1:8000/api/v1/sessions -Method Post -Conte
 
 `connected` should appear. Keep the monitor running.
 
-### Terminal C — transmit 100 decoded Phase 2 samples
+### Terminal C - transmit 100 decoded Phase 2 samples
 
 ```powershell
 .\.venv\Scripts\python.exe -m backend.tools.publish --input data/decoded/mixed_10s.jsonl --session-id phase3-live-001 --existing --mode replay --rate 1
@@ -120,7 +120,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/sessions/phase3-live-001/stats
 
 Expected `count: 100`, elapsed range `0.0` to `9.9` seconds.
 
-### Additional exercise — quick batch import
+### Additional exercise - quick batch import
 
 ```powershell
 .\.venv\Scripts\python.exe -m backend.tools.publish --input data/decoded/mixed_10s.jsonl --session-id phase3-import-001 --mode import --batch-size 100

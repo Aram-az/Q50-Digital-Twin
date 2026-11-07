@@ -19,7 +19,7 @@ Open the **[live instrument-cluster showcase](https://aram-az.github.io/Q50-Digi
 3. Select **Sensor Dropout** → **Start Simulation**; inspect the timestamp gap and diagnostic log on preset **04**.
 4. Replay a generated session using the transport controls; switch between **DRIVE / THERMAL / TRACE / LOGBOOK**.
 
-**Public-site data is entirely synthetic and generated in your browser.** This is a demonstration of the UI, simulation and diagnostic rules—not a connection to my car or a public automotive API. The **local development build** additionally supports persistent FastAPI sessions and WebSockets. [How the showcase works →](docs/showcase.md)
+**Public-site data is entirely synthetic and generated in your browser.** This is a demonstration of the UI, simulation and diagnostic rules-not a connection to my car or a public automotive API. The **local development build** additionally supports persistent FastAPI sessions and WebSockets. [How the showcase works →](docs/showcase.md)
 
 ## The engineering work
 
@@ -37,17 +37,17 @@ Open the **[live instrument-cluster showcase](https://aram-az.github.io/Q50-Digi
 
 ```mermaid
 flowchart TB
-  subgraph NATIVE["REAL Q50 — separate native application"]
+  subgraph NATIVE["REAL Q50 - separate native application"]
     A["Factory infotainment sensors"] --> B["Android SensorManager"] --> C["Original Java / Canvas App Garage app"]
   end
-  subgraph DESKTOP["DESKTOP DIGITAL TWIN — synthetic data"]
+  subgraph DESKTOP["DESKTOP DIGITAL TWIN - synthetic data"]
     D["Python simulator"] --> E["Python synthetic CAN encoder"] --> F["C++17 decoder"] --> G["FastAPI ingest"]
     G --> H["SQLite / PostgreSQL"]
     G --> I["WebSockets"]
     H --> J["React instrument cluster"]
     I --> J
   end
-  subgraph PUBLIC["GITHUB PAGES — synthetic browser demo"]
+  subgraph PUBLIC["GITHUB PAGES - synthetic browser demo"]
     K["Browser-only deterministic generator"] --> L["Animated gauges, traces and replay"]
   end
   C -. "Recording bridge: future work, NOT implemented" .-> G
@@ -61,11 +61,11 @@ My native application targets the original App Garage-capable InTouch hardware u
 
 The app is packaged by a reproducible build script into an APK and then an EPK container. The build uses a public compatibility certificate; **private signing keys are not committed**.
 
-- **[Native app source](native-app/src/com/aram/q50telemetry/)** — `Q50Activity`, `TelemetryView`, `SensorState`
-- **[Build and packaging](native-app/build.ps1)** — Windows PowerShell toolchain
-- **[EPK packager](native-app/tools/build_epk.py)** — Python implementation and tests
-- **[Native installation documentation](native-app/docs/INSTALL_WINDOWS.md)** — requirements, parked-only compatibility checks and limitations
-- **[Vehicle verification log template](native-app/docs/VERIFICATION_LOG.md)** — record real signal validation, pending further measurements
+- **[Native app source](native-app/src/com/aram/q50telemetry/)** - `Q50Activity`, `TelemetryView`, `SensorState`
+- **[Build and packaging](native-app/build.ps1)** - Windows PowerShell toolchain
+- **[EPK packager](native-app/tools/build_epk.py)** - Python implementation and tests
+- **[Native installation documentation](native-app/docs/INSTALL_WINDOWS.md)** - requirements, parked-only compatibility checks and limitations
+- **[Vehicle verification log template](native-app/docs/VERIFICATION_LOG.md)** - record real signal validation, pending further measurements
 
 **Status:** App installation and operation on my own 2017 vehicle: confirmed by owner. **Verified signal calibration and real-car recording/export: pending.** No telemetry from this vehicle is hosted publicly.
 
@@ -154,10 +154,10 @@ For the cross-language round trip, compile `decoder/src/main.cpp` (C++17), run `
 
 ## What comes next
 
-1. **Sensor verification** — cross-check actual RPM, coolant, temperatures and throttle readings with trusted instrumentation while stationary; document rates and firmware compatibility.
-2. **Real telemetry recording** — develop a safe, user-initiated, read-only export process *if* the head unit permits it, and import validated records into the existing FastAPI schema.
-3. **Performance analysis** — record sensor latency, dropped samples, rendering FPS and memory usage on the target hardware.
-4. **Evidence** — post a short, stationary in-car walkthrough, paired with a screenshot of the browser simulation.
+1. **Sensor verification** - cross-check actual RPM, coolant, temperatures and throttle readings with trusted instrumentation while stationary; document rates and firmware compatibility.
+2. **Real telemetry recording** - develop a safe, user-initiated, read-only export process *if* the head unit permits it, and import validated records into the existing FastAPI schema.
+3. **Performance analysis** - record sensor latency, dropped samples, rendering FPS and memory usage on the target hardware.
+4. **Evidence** - post a short, stationary in-car walkthrough, paired with a screenshot of the browser simulation.
 
 ## Safety and attribution
 

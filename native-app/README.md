@@ -1,4 +1,4 @@
-# Q50 Native Telemetry — Phase 6A
+# Q50 Native Telemetry - Phase 6A
 
 **An original, read-only legacy Android 2.3/API-10 instrument application** designed
 for App Garage-compatible V37 Infiniti Q50/Q60 head units.

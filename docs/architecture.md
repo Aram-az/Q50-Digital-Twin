@@ -4,7 +4,7 @@
 
 ## Purpose
 
-The project explores the same general problem—vehicle telemetry—across three different environments with different trust boundaries. The **synthetic CAN implementation**, the **local desktop API**, and the **native in-car Android sensor reader** are distinct systems. Do not confuse simulated values with actual ECU measurements.
+The project explores the same general problem-vehicle telemetry-across three different environments with different trust boundaries. The **synthetic CAN implementation**, the **local desktop API**, and the **native in-car Android sensor reader** are distinct systems. Do not confuse simulated values with actual ECU measurements.
 
 ## 1. Synthetic telemetry path
 
